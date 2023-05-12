@@ -1,19 +1,24 @@
+import json
 import os
 import torch.nn.functional as F
-import torch
 import requests
 import time
 import numpy as np
 import librosa
 import soundfile as sf
-
-from src.models.store.matchboxnet import MatchboxNet
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torchmetrics import Accuracy
+from sklearn.model_selection import train_test_split
+from torch.utils.data import DataLoader
+from src.models.matchboxnet import MatchboxNet
 from src.logger import logger
+from src.KeywordSpottingDataset import KeywordSpottingDataset
 
-from scipy.linalg import _fblas
 
 SAMPLE_RATE = 16000
-HOP_LENGTH = 0.5
+HOP_LENGTH = 0.3
 WINDOW_SIZE = 1
 OUTPUT_FOLDER_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), './../outputs')
 OUTPUT_RADIO_FILE_PATH = os.path.join(OUTPUT_FOLDER_PATH, 'radio.txt')
@@ -29,6 +34,7 @@ class KeywordSpotter:
         self.model = MatchboxNet(B=3, R=2, C=64, bins=64, NUM_CLASSES=2)
         self.model.load_state_dict(torch.load(model_path))
         self.model.float().to("cpu")
+        self.training_data = None
 
     def check_folders(self):
         if not os.path.exists(OUTPUT_FOLDER_PATH):
@@ -175,15 +181,122 @@ class KeywordSpotter:
                         print(f"DETECTED!!!")
                         logger.info(f"DETECTED ON {found_ind} second")
                         with open(output_file, 'a') as f:
-                            f.write(f'{radio_url}:{next_predict_ind + 1:.0f}\n')
+                            f.write(f'{radio_url}:{int(next_predict_ind + 1):.0f}\n')
 
-                        cut_name = os.path.join(OUTPUT_FOLDER_PATH , f'radio_{found_ind}.wav')
-                        found_signal = signal[int((found_ind - 1) * sample_rate):int((found_ind + 5) * sample_rate)]
+                        cut_name = os.path.join(OUTPUT_FOLDER_PATH , f'radio_{int(found_ind)}.wav')
+                        found_signal = signal[int((found_ind - 1) * sample_rate):int((found_ind + 3) * sample_rate)]
                         sf.write(cut_name, found_signal, samplerate=self.SAMPLE_RATE)
                         found_flag = False
 
         except KeyboardInterrupt:
             print("removed cache")
+
+    def choose_device(self):
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        return device
+
+    def load_data(self, data_path):
+        f = open(data_path)
+        data = json.load(f)
+        for old_key in list(data.keys()):
+            new_key = data_path.replace(
+                "data.json", old_key)
+            data[new_key] = data.pop(old_key)
+        self.training_data = data
+
+    def reload_model(self, model_path=None):
+        self.model = MatchboxNet(B=3, R=2, C=64, bins=64, NUM_CLASSES=2)
+        if model_path is not None:
+            self.model.load_state_dict(torch.load(model_path))
+        self.model.float().to("cpu")
+
+    def prepare(self, data_path, batch_size, test_size=0.2):
+        self.load_data(data_path)
+        device = self.choose_device()
+        # prepare data
+        file_paths = [path for path in self.training_data.keys()]
+        labels = [label for label in self.training_data.values()]
+        X_train_paths, X_val_paths, y_train, y_val = train_test_split(file_paths, labels, test_size=test_size,
+                                                                      random_state=42, shuffle=True, stratify=labels)
+        # create train and validation datasets
+        train_dataset = KeywordSpottingDataset(X_train_paths, y_train)
+        val_dataset = KeywordSpottingDataset(X_val_paths, y_val)
+
+        # create train and validation dataloaders
+        train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+        val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+
+        # Define the loss function and optimizer
+        criterion = nn.CrossEntropyLoss()
+        optimizer = optim.Adam(self.model.parameters(), lr=1e-4)
+        return train_dataloader, val_dataloader, criterion, optimizer, device
+
+    def run_epochs(self, model, loader, criterion, optimizer, device):
+        model.to(device)
+        model.train()
+        running_loss = 0.0
+        acc = 0
+        count = 0
+        for i, (inputs, targets) in enumerate(loader):
+            inputs = inputs.float().to(device)
+            targets = targets.type(torch.LongTensor).to(device)
+            optimizer.zero_grad()
+            outputs = model(inputs)
+            loss = criterion(outputs, targets)
+            loss.backward()
+            optimizer.step()
+            running_loss += loss.item()
+            _, predicted = torch.max(outputs.data, 1)
+            running_acc = Accuracy(num_classes=2, compute_on_step=False, dist_sync_on_step=False, task='binary')(
+                predicted.cpu(), targets.cpu())
+            acc += running_acc
+            count = i
+        accuracy = acc / (count + 1)
+        return running_loss / len(loader), accuracy
+
+    def validate(self, model, loader, criterion, device):
+        model.eval()
+        model.to(device)
+        running_loss = 0.0
+        acc = 0
+        count = 0
+        with torch.no_grad():
+            for i, (inputs, targets) in enumerate(loader):
+                inputs = inputs.float().to(device)
+                targets = targets.type(torch.LongTensor).to(device)
+                outputs = model(inputs)
+                loss = criterion(outputs, targets)
+                running_loss += loss.item()
+                _, predicted = torch.max(outputs.data, 1)
+                running_acc = Accuracy(num_classes=2, compute_on_step=False, dist_sync_on_step=False, task='binary')(
+                    predicted.cpu(), targets.cpu())
+                print('training running accuracy', running_acc)
+                acc += running_acc
+                count = i
+            accuracy = acc / (count + 1)
+        return running_loss / len(loader), accuracy
+
+    def train(self, data_path, batch_size, n_epochs, test_size):
+        train_dataloader, val_dataloader, criterion, optimizer, device = self.prepare(data_path, batch_size, test_size)
+        self.reload_model()
+        for epoch in range(n_epochs):
+            train_loss, train_acc = self.run_epochs(self.model, train_dataloader, criterion, optimizer, device)
+            val_loss, val_acc = self.validate(self.model, val_dataloader, criterion, device)
+            print(f"Epoch {epoch + 1}: Train Loss={train_loss:.4f}, Train Acc={train_acc:.2f}%, Val Loss={val_loss:.4f}, Val Acc={val_acc:.2f}%")
+
+        model_path = f'./src/models/store/matrixnet_{n_epochs}_epochs.pth'
+        torch.save(self.model.state_dict(), model_path)
+        self.reload_model(model_path)
+        logger.info("model trained")
+
+    def evaluate(self, data_path, batch_size):
+        _, val_dataloader, criterion, optimizer, device = self.prepare(data_path, batch_size)
+        val_loss, val_acc = self.validate(self.model, val_dataloader, criterion, device)
+        print(f"Evaluating results: Val Loss={val_loss:.4f}, Val Acc={val_acc:.2f}%")
+        logger.info("model evaluated")
+
+
+
 
 
 

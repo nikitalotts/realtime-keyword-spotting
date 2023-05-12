@@ -4,6 +4,11 @@ import fire
 from src.KeywordSpotter import KeywordSpotter
 from src.logger import logger
 
+TRAINING_DATA = os.path.join(os.path.dirname(os.path.abspath(__file__)), './dataset/data.json')
+BATCH_SIZE = 16
+N_EPOCHS = 1
+TEST_SIZE = 0.3
+
 
 class CliWrapper(object):
     """
@@ -35,6 +40,14 @@ class CliWrapper(object):
     def listen_real(self, radio='http://radio.maslovka-home.ru/thanosshow', model_path=None):
         self.__load_model(model_path)
         self.spotter.process_radio_stream(radio)
+
+    def train(self, data_path=TRAINING_DATA, batch_size=BATCH_SIZE, n_epochs=N_EPOCHS, test_size=TEST_SIZE):
+        self.__load_model()
+        self.spotter.train(data_path, batch_size, n_epochs, test_size)
+
+    def evaluate(self, data_path=TRAINING_DATA, batch_size=BATCH_SIZE):
+        self.__load_model()
+        self.spotter.evaluate(data_path, batch_size)
 
 
 if __name__ == "__main__":
