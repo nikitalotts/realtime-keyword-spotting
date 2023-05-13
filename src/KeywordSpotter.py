@@ -1,19 +1,21 @@
-import json
 import os
-import torch.nn.functional as F
-import requests
+import sys
+import json
 import time
-import numpy as np
-import librosa
-import soundfile as sf
 import torch
+import librosa
+import requests
+import threading
+import numpy as np
 import torch.nn as nn
+import soundfile as sf
 import torch.optim as optim
+from src.logger import logger
+import torch.nn.functional as F
 from torchmetrics import Accuracy
-from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader
 from src.models.MatchboxNet import MatchboxNet
-from src.logger import logger
+from sklearn.model_selection import train_test_split
 from src.KeywordSpottingDataset import KeywordSpottingDataset
 
 # Define constants
@@ -63,6 +65,7 @@ class KeywordSpotter:
         self.model.load_state_dict(torch.load(model_path))
         self.model.float().to("cpu")
         self.training_data = None
+        self.radio_listening_timeout = 4 * 60 * 60   # in seconds, 4 hours
 
     def check_folders(self):
         """
@@ -144,6 +147,10 @@ class KeywordSpotter:
             None
         """
         try:
+            # set up timeout handler
+            timer = threading.Timer(self.radio_listening_timeout, self.timeout_handler)
+            timer.start()
+
             output_file = OUTPUT_RADIO_FILE_PATH
             with open(output_file, 'w') as f:
                 f.write(f'Listening to {radio_url}:\n')
@@ -172,7 +179,6 @@ class KeywordSpotter:
                     audio_file = open(TEMP_AUDIO_FILE_PATH, 'wb+')
                     audio_file.write(chunk)
                     audio_file.close()
-
                     try:
                         my_signal, sample_rate = librosa.load(TEMP_AUDIO_FILE_PATH, sr=self.SAMPLE_RATE)
                     except Exception as e:
@@ -216,6 +222,12 @@ class KeywordSpotter:
             if os.path.exists(TEMP_AUDIO_FILE_PATH):
                 os.remove(TEMP_AUDIO_FILE_PATH)
             print("removed cache")
+        finally:
+            timer.join()
+
+    def timeout_handler(self):
+        logger.error("Process timed out")
+        os._exit(0)
 
     def choose_device(self):
         """
