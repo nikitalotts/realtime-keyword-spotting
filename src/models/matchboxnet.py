@@ -6,24 +6,15 @@ from torchaudio.transforms import MFCC
 
 
 class TCSConv(nn.Module):
-    '''
-    An implementation of Time-channel Seperable Convolution
-    **Arguments**
-    in_channels : int
-      The number of input channels to the layers
-    out_channels : int
-      The requested number of output channels of the layers
-    kernel_size : int
-      The size of the convolution kernel
-    Example
-    -------
-    >>> inputs = torch.randn(1, 64, 400)
-    >>> tcs_layer = TCSConv(64, 128, 11)
-    >>> features = tcs_layer(inputs)
-    >>> features.shape
-    torch.Size([1, 128, 400])
-    '''
+    """
+    A module implementing a Temporal Convolution Separable (TCS) convolution.
 
+    Args:
+        in_channels (int): The number of input channels.
+        out_channels (int): The number of output channels.
+        kernel_size (int): The size of the convolutional kernel.
+
+    """
     def __init__(self, in_channels, out_channels, kernel_size):
         super(TCSConv, self).__init__()
 
@@ -40,28 +31,15 @@ class TCSConv(nn.Module):
 
 
 class SubBlock(nn.Module):
-    '''
-    An implementation of a sub-block that is repeated R times
-    **Arguments**
-    in_channels : int
-      The number of input channels to the layers
-    out_channels : int
-      The requested number of output channels of the layers
-    kernel_size : int
-      The size of the convolution kernel
+    """
+    A sub-block module used in the MatchboxNet model.
 
-    residual : None or torch.Tensor
-      Only applicable for the final sub-block. If not None, will add 'residual' after batchnorm layer
-    Example
-    -------
-    >>> inputs = torch.randn(1, 128, 600)
+    Args:
+        in_channels (int): The number of input channels.
+        out_channels (int): The number of output channels.
+        kernel_size (int): The size of the convolutional kernel.
 
-    >>> subblock = SubBlock(128, 64, 13)
-    >>> outputs = subblock(inputs)
-    >>> outputs.shape
-    torch.Size([1, 64, 600])
-    '''
-
+    """
     def __init__(self, in_channels, out_channels, kernel_size):
         super(SubBlock, self).__init__()
         self.in_channels = in_channels
@@ -87,30 +65,15 @@ class SubBlock(nn.Module):
 
 
 class MainBlock(nn.Module):
-    '''
-    An implementation of the residual block containing R repeating sub-blocks
-    **Arguments**
-    in_channels : int
-      The number of input channels to the residual block
-    out_channels : int
-      The requested number of output channels of the sub-blocks
-    kernel_size : int
-      The size of the convolution kernel
-    R : int
-      The number of repeating sub-blocks contained within this residual block
+    """
+    A module implementing the main block of MatchboxNet.
 
-    residual : None or torch.Tensor
-      Only applicable for the final sub-block. If not None, will add 'residual' after batchnorm layer
-    Example
-    -------
-    >>> inputs = torch.randn(1, 128, 300)
-
-    >>> block = MainBlock(128, 64, 13, 3)
-    >>> outputs = block(inputs)
-    >>> outputs.shape
-    torch.Size([1, 64, 300])
-    '''
-
+    Args:
+        in_channels (int): The number of input channels.
+        out_channels (int): The number of output channels.
+        kernel_size (int): The size of the convolutional kernel.
+        R (int): The number of sub-blocks. Defaults to 1.
+    """
     def __init__(self, in_channels, out_channels, kernel_size, R=1):
         super(MainBlock, self).__init__()
         self.in_channels = in_channels
@@ -147,31 +110,18 @@ class MainBlock(nn.Module):
 
 
 class MatchboxNet(nn.Module):
-    '''
-    An implementation of MatchboxNet (https://arxiv.org/abs/2004.08531)
-    The input is expected to be 64 channel MFCC features
-    **Arguments**
-    B : int
-      The number of residual blocks in the model
-    R : int
-      The number of sub-blocks within each residual block
-    C : int
-      The size of the output channels within a sub-block
-    kernel_sizes : None or list
-      If None, kernel sizes will be assigned to values used in the paper. Otherwise kernel_sizes will be used
-      len(kernel_sizes) must equal the number of blocks (B)
-    NUM_CLASSES : int
-      The number of classes in the dataset (i.e. number of keywords.) Defaults to 30 to match the Google Speech Commands Dataset
-    Example
-    -------
-    >>> inputs = torch.randn(1, 64, 500)
+    """
+    A MatchboxNet model implementation for audio classification.
 
-    >>> model = MatchboxNet(B=3, R=2, C=64,bins=64, NUM_CLASSES=30)
-    >>> outputs = model(inputs)
-    >>> outputs.shape
-    torch.Size([1, 30])
-    '''
+    Args:
+        B (int): The number of convolutional blocks in the model.
+        R (int): The number of sub-blocks per block in the model.
+        C (int): The number of channels in the input feature map.
+        bins (int): The number of Mel frequency bins in the input spectrogram.
+        kernel_sizes (list): A list of kernel sizes to use for the sub-blocks in the model.
+        NUM_CLASSES (int): The number of output classes for the model.
 
+    """
     def __init__(self, B, R, C, bins=64, kernel_sizes=None, NUM_CLASSES=30):
         super(MatchboxNet, self).__init__()
         if not kernel_sizes:
@@ -241,6 +191,18 @@ class MatchboxNet(nn.Module):
 
 
 class MFCC_MatchboxNet(nn.Module):
+    """
+    A MatchboxNet model implementation for audio classification using MFCC features.
+
+    Args:
+        bins (int): The number of Mel frequency bins in the input spectrogram.
+        B (int): The number of convolutional blocks in the model.
+        R (int): The number of sub-blocks per block in the model.
+        n_channels (int): The number of channels in the input feature map.
+        kernel_sizes (list): A list of kernel sizes to use for the sub-blocks in the model.
+        num_classes (int): The number of output classes for the model.
+
+    """
     def __init__(self, bins: int, B: int, R: int, n_channels, kernel_sizes=None, num_classes=12):
         super(MFCC_MatchboxNet, self).__init__()
         self.sampling_rate = 16000
