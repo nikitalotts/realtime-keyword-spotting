@@ -49,7 +49,7 @@ dataset
 and `data.json` file should look like this***:
 
 ```
-$ cat data.yaml
+$ cat data.json
 
 {"./clips/0.wav": 0, "./clips/1.wav": 0, "./clips/2.wav": 0}
 ```
