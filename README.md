@@ -51,7 +51,7 @@ and `data.json` file should look like this***:
 ```
 $ cat data.json
 
-{"./clips/0.wav": 0, "./clips/1.wav": 0, "./clips/2.wav": 0}
+{"./clips/0.wav": 1, "./clips/1.wav": 0, "./clips/2.wav": 1, ... }
 ```
 
 ***the paths specified in the `data.json` must be **relative paths** from data file
