@@ -61,7 +61,7 @@ $ cat data.yaml
 
 The system works through the following CLI commands:
 1. train:
-```$ python path/to/model.py train --parameter=value```
+```$ python path/to/main.py train --parameter=value```
 
 ```
 Trains the KeywordSpotter model using the provided training data. Save trained model to models` store folder
@@ -75,7 +75,7 @@ Returns:
     None
 ```
 
-2. evaluate: ```$ python path/to/model.py evaluate --parameter=value```
+2. evaluate: ```$ python path/to/main.py evaluate --parameter=value```
 
 ```
 Evaluates the performance of the KeywordSpotter model using the provided evaluation data and print current accuracy of model.
@@ -87,7 +87,7 @@ Returns:
     None
 ```
 
-3. listen: ```$ python path/to/model.py listen --parameter=value```
+3. listen: ```$ python path/to/main.py listen --parameter=value```
 
 ```
 Listens to a live radio stream and detects wake words using a pre-trained model, crop audio clips from stream which contain the keywords and store them in output folder End after 4 hours of listening(by default) or if user closed program by pressing the combination “CTRL + C”
@@ -99,7 +99,7 @@ Returns:
     None
 ```
 
-4. find: ```$ python path/to/model.py find --parameter=value```
+4. find: ```$ python path/to/main.py find --parameter=value```
 
 ```
 Finds wake words in an audio file using a pre-trained model, crop word following the keywords and store them in output folder
