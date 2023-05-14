@@ -1,1 +1,0 @@
-start /B cmd.exe /C "conda activate base & python main.py listen_real"
