@@ -1,7 +1,8 @@
 import os
 import fire
-from src.KeywordSpotter import KeywordSpotter
+import src.logger
 from src.logger import logger
+from src.KeywordSpotter import KeywordSpotter
 
 TRAINING_DATA = os.path.join(os.path.dirname(os.path.abspath(__file__)), './dataset/data.json')  # Path to the
 # training data file containing audio and labels in JSON format
@@ -16,7 +17,7 @@ class CliWrapper(object):
     It allows the user to interact with the `KeywordSpotter` class using command line arguments.
     """
 
-    def __init__(self, ):
+    def __init__(self):
         """
         Initializes a new `CliWrapper` instance.
 
@@ -28,8 +29,10 @@ class CliWrapper(object):
         """
         self.spotter = None
         self.default_model = './src/models/store/MatchboxNet_1_sec.pth'
+        logger.info("CliWrapper object initialized")
 
     def __load_model(self, model_path=None):
+        logger.info(f"started loading model on, model_path={model_path}")
         """
         Loads a pre-trained model from a given path or the default path.
 
@@ -43,7 +46,7 @@ class CliWrapper(object):
             model_path = self.default_model
         self.spotter = KeywordSpotter(model_path)
         self.spotter.check_folders()
-        logger.info(f"CliWrapper object inited")
+        logger.info(f"Model loaded successfully, model_path={model_path}")
 
     def find(self, audio='./training_data/data/thanos_message.wav', model_path=None):
         """
@@ -57,9 +60,10 @@ class CliWrapper(object):
            None
         """
         self.__load_model(model_path)
+        logger.info(f"Started detecting wake words on audio={audio}; model_path={model_path}")
         results = self.spotter.detect_wake_words(os.path.join(os.path.dirname(os.path.abspath(__file__)), audio))
-        print(f'Keywords detected on {", ".join([str(x) for x in results])} seconds')
-        # logger.info(f'Keywords detected on {", ".join([str(x) for x in results])} seconds')
+        logger.info(f'Keywords detected on {", ".join([str(x) for x in results])} seconds')
+        logger.info(f"The method is successfully finished")
 
     def listen(self, radio='https://radio.maslovka-home.ru/soundcheck', model_path=None):
         """
@@ -73,7 +77,9 @@ class CliWrapper(object):
             None
         """
         self.__load_model(model_path)
+        logger.info(f"Started listening to radio stream: radio={radio}; model_path={model_path}")
         self.spotter.process_radio_stream(radio)
+        logger.info(f"The method is successfully finished")
 
     def listen_real(self, radio='http://radio.maslovka-home.ru/thanosshow', model_path=None):
         """
@@ -88,7 +94,9 @@ class CliWrapper(object):
            None
         """
         self.__load_model(model_path)
+        logger.info(f"Started listening to radio stream: radio={radio}; model_path={model_path}")
         self.spotter.process_radio_stream(radio)
+        logger.info(f"The method is successfully finished")
 
     def train(self, data_path=TRAINING_DATA, batch_size=BATCH_SIZE, n_epochs=N_EPOCHS, test_size=TEST_SIZE):
         """
@@ -105,7 +113,9 @@ class CliWrapper(object):
             None
         """
         self.__load_model()
+        logger.info(f"Started training: data_path={data_path}; batch_size={batch_size}; n_epochs={n_epochs}' test_size={test_size}")
         self.spotter.train(data_path, batch_size, n_epochs, test_size)
+        logger.info(f"The method is successfully finished")
 
     def evaluate(self, data_path=TRAINING_DATA, batch_size=BATCH_SIZE):
         """
@@ -120,7 +130,9 @@ class CliWrapper(object):
             None
         """
         self.__load_model()
+        logger.info(f"Started evaluating: data_path={data_path}; batch_size={batch_size}")
         self.spotter.evaluate(data_path, batch_size)
+        logger.info(f"The method is successfully finished")
 
 
 if __name__ == "__main__":

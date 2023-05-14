@@ -4,6 +4,7 @@ Logger's setup file
 
 import logging
 import os.path
+import sys
 
 # base level of logging
 LOGGING_LEVEL = logging.INFO
@@ -38,4 +39,11 @@ logging.basicConfig(level=LOGGING_LEVEL,
 
 # logger instance to import to another modules
 logger = logging.getLogger(__name__)
+
+
+def log_import_error(type, value, traceback):
+    logger.error(f"Import Error: {value}", exc_info=(type, value, traceback))
+
+
+sys.excepthook = log_import_error
 

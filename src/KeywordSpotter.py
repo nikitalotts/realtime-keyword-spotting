@@ -27,6 +27,8 @@ OUTPUT_RADIO_FILE_PATH = os.path.join(OUTPUT_FOLDER_PATH, 'radio.txt')  # The ou
 TEMP_AUDIO_FILE_PATH = os.path.join(OUTPUT_FOLDER_PATH, 'temp.mp3')  # The temporary file path for the audio file
 
 
+
+
 class KeywordSpotter:
     """
     A class for detecting wake words in audio files.
@@ -52,6 +54,7 @@ class KeywordSpotter:
     """
 
     def __init__(self, model_path):
+        logger.info(f"started initializing KeywordSpotter object, model_path={model_path}")
         """
         Initializes the KeywordSpotter class with the necessary parameters and loads the pre-trained model.
 
@@ -66,15 +69,21 @@ class KeywordSpotter:
         self.model.float().to("cpu")
         self.training_data = None
         self.radio_listening_timeout = 4 * 60 * 60   # in seconds, 4 hours
+        logger.info(f"KeywordSpotter object initialized, model_path={model_path}")
 
     def check_folders(self):
+        logger.info(f"started checking folders")
         """
         Creates the output folder if it doesn't exist.
         """
         if not os.path.exists(OUTPUT_FOLDER_PATH):
             os.mkdir(OUTPUT_FOLDER_PATH)
+            logger.info(f"Output folder created: {OUTPUT_FOLDER_PATH}")
+        logger.info(f"Folders checked")
+
 
     def detect_wake_words(self, audio_file_path):
+        logger.info(f"started detecting words, audio_file_path={audio_file_path}")
         """
        Detects wake words in an audio file and returns a list of times where the wake word was detected.
 
@@ -93,8 +102,9 @@ class KeywordSpotter:
 
         # load file
         y, sr = librosa.load(audio_file_path, sr=self.SAMPLE_RATE)
+        logger.info("audio file successfully loaded")
 
-        # add paddings if need
+        # add paddings if it's needed
         n_pad = self.window_size - (len(y) % self.window_size)
         y_padded = np.concatenate((y, np.zeros(n_pad)))
         sec = self.hop_length
@@ -120,6 +130,7 @@ class KeywordSpotter:
                     sf.write(cut_name, y_padded[int(sec * SAMPLE_RATE) + (1 * SAMPLE_RATE): int(
                         sec * SAMPLE_RATE + (SAMPLE_RATE * 2.5))], samplerate=SAMPLE_RATE)
                 sec += self.hop_length
+        logger.info("wake up words successfully detected")
         return res
 
     def convert_audio_to_tensor(self, audio):
@@ -138,6 +149,7 @@ class KeywordSpotter:
         return tensor
 
     def process_radio_stream(self, radio_url):
+        logger.info(f"started listening to radio stream, radio_url={radio_url}")
         """Processes a radio stream for keyword detection.
 
         Args:
@@ -161,6 +173,7 @@ class KeywordSpotter:
                     audio = requests.get(radio_url, stream=True)
                     audio.raise_for_status()
                     start_flag = True
+                    logger.info(f"connected to radio stream")
                 except:
                     time.sleep(10)
 
@@ -182,7 +195,7 @@ class KeywordSpotter:
                     try:
                         my_signal, sample_rate = librosa.load(TEMP_AUDIO_FILE_PATH, sr=self.SAMPLE_RATE)
                     except Exception as e:
-                        print(e)
+                        logger.info(f"error while loading temp file", e)
                         continue
 
                     timing += my_signal.shape[0] / sample_rate
@@ -217,16 +230,22 @@ class KeywordSpotter:
                         keyword_frame = streamed_audio[
                                        int((keyword_timing - 1) * sample_rate):int((keyword_timing + 3) * sample_rate)]
                         sf.write(cut_name, keyword_frame, samplerate=self.SAMPLE_RATE)
+                        logger.info(f"saved detected frame, cut_name={cut_name}")
                         keyword = False
         except KeyboardInterrupt:
-            if os.path.exists(TEMP_AUDIO_FILE_PATH):
-                os.remove(TEMP_AUDIO_FILE_PATH)
-            print("removed cache")
+            self.remove_temp_files()
+            logger.info(f"user cancelled process")
         finally:
             timer.join()
 
+    def remove_temp_files(self):
+        if os.path.exists(TEMP_AUDIO_FILE_PATH):
+            os.remove(TEMP_AUDIO_FILE_PATH)
+        logger.info(f"temp files removed on: {TEMP_AUDIO_FILE_PATH}")
+
     def timeout_handler(self):
         logger.error("Process timed out")
+        self.remove_temp_files()
         os._exit(0)
 
     def choose_device(self):
@@ -237,9 +256,11 @@ class KeywordSpotter:
             device (str): "cuda" if a GPU is available, otherwise "cpu".
         """
         device = "cuda" if torch.cuda.is_available() else "cpu"
+        logger.info(f"chose device: {device}")
         return device
 
     def load_data(self, data_path):
+        logger.info(f"started loading data, data_path={data_path}")
         """
         Method to load the training data from a JSON file and store it in the KeywordSpotter object.
 
@@ -256,8 +277,10 @@ class KeywordSpotter:
                 "data.json", old_key)
             data[new_key] = data.pop(old_key)
         self.training_data = data
+        logger.info(f"data successfully loaded")
 
     def reload_model(self, model_path=None):
+        logger.info(f"started model reloading, model_path={model_path}")
         """
         Method to reload the MatchboxNet model for training.
 
@@ -271,8 +294,10 @@ class KeywordSpotter:
         if model_path is not None:
             self.model.load_state_dict(torch.load(model_path))
         self.model.float().to("cpu")
+        logger.info(f"model successfully reloaded")
 
     def prepare(self, data_path, batch_size, test_size=0.2):
+        logger.info(f"started preparing data: data_path={data_path}; batch_size={batch_size}; test_size={test_size}")
         """
        Method to prepare the training and validation data for training the model.
 
@@ -296,20 +321,26 @@ class KeywordSpotter:
         labels = [label for label in self.training_data.values()]
         X_train_paths, X_val_paths, y_train, y_val = train_test_split(file_paths, labels, test_size=test_size,
                                                                       random_state=42, shuffle=True, stratify=labels)
+        logger.info("data splitted")
+
         # create train and validation datasets
         train_dataset = KeywordSpottingDataset(X_train_paths, y_train)
         val_dataset = KeywordSpottingDataset(X_val_paths, y_val)
+        logger.info("datasets created")
 
         # create train and validation dataloaders
         train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
         val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+        logger.info("dataloaders created")
 
         # Define the loss function and optimizer
         criterion = nn.CrossEntropyLoss()
         optimizer = optim.Adam(self.model.parameters(), lr=1e-4)
+        logger.info("objects successfully prepared")
         return train_dataloader, val_dataloader, criterion, optimizer, device
 
     def run_epochs(self, model, loader, criterion, optimizer, device):
+        logger.info(f"started running new epochs: model={type(model)}; loader={loader}; criterion={criterion}; optimizer={optimizer}; device={device}")
         """
         Trains the given model for one epoch on the given data loader using the given criterion and optimizer.
 
@@ -342,10 +373,14 @@ class KeywordSpotter:
                 predicted.cpu(), targets.cpu())
             acc += running_acc
             count = i
+            print(f"training running batch accuracy: {running_acc}")
         accuracy = acc / (count + 1)
+        logger.info(f"all epochs successfully completed")
         return running_loss / len(loader), accuracy
 
     def validate(self, model, loader, criterion, device):
+        logger.info(
+            f"starting validation: model={type(model)}; loader={loader}; criterion={criterion}; device={device}")
         """
         Runs validation on the given model using the given data loader and criterion.
 
@@ -377,9 +412,11 @@ class KeywordSpotter:
                 acc += running_acc
                 count = i
             accuracy = acc / (count + 1)
+        logger.info(f"validation successfully completed")
         return running_loss / len(loader), accuracy
 
     def train(self, data_path, batch_size, n_epochs, test_size):
+        logger.info(f"started training: data_path={data_path}; batch_size={batch_size}; n_epochs={n_epochs}; test_size={test_size}")
         """
         Trains the MatchboxNet model on the provided data.
 
@@ -398,15 +435,15 @@ class KeywordSpotter:
         for epoch in range(n_epochs):
             train_loss, train_acc = self.run_epochs(self.model, train_dataloader, criterion, optimizer, device)
             val_loss, val_acc = self.validate(self.model, val_dataloader, criterion, device)
-            print(
-                f"Epoch {epoch + 1}: Train Loss={train_loss:.4f}, Train Acc={train_acc:.2f}%, Val Loss={val_loss:.4f}, Val Acc={val_acc:.2f}%")
-
+            logger.info(f"training epoch {epoch + 1}: Train Loss={train_loss:.4f}, Train Acc={train_acc:.2f}%, Val Loss={val_loss:.4f}, Val Acc={val_acc:.2f}%")
         model_path = f'./src/models/store/MatchboxNet_{n_epochs}_epochs.pth'
         torch.save(self.model.state_dict(), model_path)
         self.reload_model(model_path)
-        logger.info("model trained")
+        logger.info(f"model trained, saved to: {model_path}")
 
     def evaluate(self, data_path, batch_size):
+        logger.info(
+            f"started evaluating: data_path={data_path}; batch_size={batch_size}")
         """
         Evaluates the MatchboxNet model on the provided data.
 
@@ -420,5 +457,5 @@ class KeywordSpotter:
         """
         _, val_dataloader, criterion, optimizer, device = self.prepare(data_path, batch_size)
         val_loss, val_acc = self.validate(self.model, val_dataloader, criterion, device)
-        print(f"Evaluating results: Val Loss={val_loss:.4f}, Val Acc={val_acc:.2f}%")
-        logger.info("model evaluated")
+        logger.info(f"Evaluating results: Val Loss={val_loss:.4f}, Val Acc={val_acc:.2f}%")
+        logger.info("model successfully evaluated")
