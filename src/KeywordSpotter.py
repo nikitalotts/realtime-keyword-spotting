@@ -160,8 +160,8 @@ class KeywordSpotter:
         Returns:
             None
         """
-        connection_attempts = 10  # number of attempts to connect to radio
-        wait_time = 60  # time in seconds for next connection try
+        connection_attempts = 100  # number of attempts to connect to radio
+        wait_time = 10  # time in seconds for next connection try
         for i in range(connection_attempts):
             logger.info(f"try {i+1}/{connection_attempts} to connect to: {radio_url}")
             try:
