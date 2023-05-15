@@ -2,9 +2,11 @@ import numpy as np
 import librosa
 import torch
 from torch.utils.data import Dataset
+from src.logger import logger
 
 # Define constants
 TRAINING_SAMPLE_RATE = 16000  # Sampling rate used during training.
+logger.info(f"Constants: TRAINING_SAMPLE_RATE: {TRAINING_SAMPLE_RATE}")
 
 
 class KeywordSpottingDataset(Dataset):

@@ -7,8 +7,11 @@ from src.KeywordSpotter import KeywordSpotter
 TRAINING_DATA = os.path.join(os.path.dirname(os.path.abspath(__file__)), './dataset/data.json')  # Path to the
 # training data file containing audio and labels in JSON format
 BATCH_SIZE = 16  # Number of samples in each batch of data during training
-N_EPOCHS = 1  # Number of times the entire training dataset is passed through the model during training
+N_EPOCHS = 5  # Number of times the entire training dataset is passed through the model during training
 TEST_SIZE = 0.3  # The proportion of the training data to be used as the validation set during training
+
+logger.info(f"Constants: TRAINING_DATA: {TRAINING_DATA}, BATCH_SIZE: {BATCH_SIZE}, N_EPOCHS: {N_EPOCHS},"
+            f" TEST_SIZE: {TEST_SIZE}")
 
 
 class CliWrapper(object):
@@ -83,8 +86,8 @@ class CliWrapper(object):
 
     def listen_real(self, radio='http://radio.maslovka-home.ru/thanosshow', model_path=None):
         """
-        Listens to a live radio stream and detects wake words using a pre-trained model. The same method that `listen`
-        but only for one specified radio station
+        Temp method only for coursework. The same method that `listen` but only for one specified radio station
+        Listens to a live radio stream and detects wake words using a pre-trained model.
 
         Args:
            radio (str, optional): The URL of the radio stream to listen to. Defaults to `'http://radio.maslovka-home.ru/thanosshow'`.

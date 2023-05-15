@@ -20,13 +20,15 @@ from src.KeywordSpottingDataset import KeywordSpottingDataset
 
 # Define constants
 SAMPLE_RATE = 16000  # The sample rate of the audio data
-HOP_LENGTH = 0.5  # The amount of second on which window will move each iteration.
+HOP_LENGTH = 0.3  # The amount of second on which window will move each iteration.
 WINDOW_SIZE = 1  # The amount of seconds in every frame
 OUTPUT_FOLDER_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), './../outputs')  # The path for the outpu directory
 OUTPUT_RADIO_FILE_PATH = os.path.join(OUTPUT_FOLDER_PATH, 'radio.txt')  # The output path for the radio file
 TEMP_AUDIO_FILE_PATH = os.path.join(OUTPUT_FOLDER_PATH, 'temp.mp3')  # The temporary file path for the audio file
 
-
+logger.info(f"Constants: SAMPLE_RATE: {SAMPLE_RATE}, HOP_LENGTH: {HOP_LENGTH}, WINDOW_SIZE: {WINDOW_SIZE},"
+            f" OUTPUT_FOLDER_PATH: {OUTPUT_FOLDER_PATH}, OUTPUT_RADIO_FILE_PATH: {OUTPUT_RADIO_FILE_PATH},"
+            f" TEMP_AUDIO_FILE_PATH: {TEMP_AUDIO_FILE_PATH}")
 
 
 class KeywordSpotter:
@@ -158,85 +160,93 @@ class KeywordSpotter:
         Returns:
             None
         """
-        try:
-            # set up timeout handler
-            timer = threading.Timer(self.radio_listening_timeout, self.timeout_handler)
-            timer.start()
+        connection_attempts = 100  # number of attempts to connect to radio
+        wait_time = 10  # time in seconds for next connection try
+        for i in range(connection_attempts):
+            logger.info(f"try {i+1}/{connection_attempts} to connect to: {radio_url}")
+            try:
+                # set up timeout handler
+                timer = threading.Timer(self.radio_listening_timeout, self.timeout_handler)
+                timer.start()
+                logger.info(f"started timer")
 
-            output_file = OUTPUT_RADIO_FILE_PATH
-            with open(output_file, 'w') as f:
-                f.write(f'Listening to {radio_url}:\n')
+                output_file = OUTPUT_RADIO_FILE_PATH
+                with open(output_file, 'w') as f:
+                    f.write(f'Listening to {radio_url}:\n')
 
-            start_flag = True
-            while not start_flag:
-                try:
-                    audio = requests.get(radio_url, stream=True)
-                    audio.raise_for_status()
-                    start_flag = True
-                    logger.info(f"connected to radio stream")
-                except:
-                    time.sleep(10)
-
-            audio = requests.get(radio_url, stream=True)
-            audio.raise_for_status()
-
-            streamed_audio = np.array([])
-            timing = 0
-            next_allowed_timing = 0
-            keyword_timing = 0
-            keyword = False
-
-            self.model.eval()
-            for chunk in audio.iter_content(chunk_size=8192):
-                if chunk:
-                    audio_file = open(TEMP_AUDIO_FILE_PATH, 'wb+')
-                    audio_file.write(chunk)
-                    audio_file.close()
+                start_flag = True
+                while not start_flag:
                     try:
-                        my_signal, sample_rate = librosa.load(TEMP_AUDIO_FILE_PATH, sr=self.SAMPLE_RATE)
-                    except Exception as e:
-                        logger.info(f"error while loading temp file", e)
+                        audio = requests.get(radio_url, stream=True)
+                        audio.raise_for_status()
+                        start_flag = True
+                        logger.info(f"connected to radio stream")
+                    except:
+                        time.sleep(wait_time)
                         continue
 
-                    timing += my_signal.shape[0] / sample_rate
-                    streamed_audio = np.concatenate([streamed_audio, my_signal])
+                audio = requests.get(radio_url, stream=True)
+                audio.raise_for_status()
 
-                    # get 1st second then start to predict
-                    while next_allowed_timing + 1 < timing:
-                        print(f"listned {next_allowed_timing + 1} seconds", end=": ")
-                        frame = streamed_audio[int((next_allowed_timing) * sample_rate):int((next_allowed_timing + 1) * sample_rate)]
-                        frame = self.convert_audio_to_tensor(frame)
-                        with torch.no_grad():
-                            prediction = self.model(frame)
-                            probs = F.softmax(prediction, dim=1)
-                            pred = torch.argmax(probs, dim=1).item()
-                        threshold = 0.5
-                        if pred > threshold:
-                            print(f"found on {keyword_timing} second; pred: {pred}")
-                            keyword = True
-                            keyword_timing = next_allowed_timing
-                        else:
-                            print(f"nothing found; pred: {pred}")
+                streamed_audio = np.array([])
+                timing = 0
+                next_allowed_timing = 0
+                keyword_timing = 0
+                keyword = False
 
-                        # move window for hop_length to predict next frame
-                        next_allowed_timing += self.hop_length
-                    if keyword and (keyword_timing + 3 < timing):
-                        print(f"DETECTED!!!")
-                        logger.info(f"DETECTED ON {keyword_timing} second")
-                        with open(output_file, 'a') as f:
-                            f.write(f'{radio_url}:{int(next_allowed_timing + 1):.0f}\n')
+                self.model.eval()
+                for chunk in audio.iter_content(chunk_size=8192):
+                    if chunk:
+                        audio_file = open(TEMP_AUDIO_FILE_PATH, 'wb+')
+                        audio_file.write(chunk)
+                        audio_file.close()
+                        try:
+                            my_signal, sample_rate = librosa.load(TEMP_AUDIO_FILE_PATH, sr=self.SAMPLE_RATE)
+                        except Exception as e:
+                            logger.info(f"error while loading temp file", e)
+                            continue
 
-                        cut_name = os.path.join(OUTPUT_FOLDER_PATH, f'radio_{int(keyword_timing)}.wav')
-                        keyword_frame = streamed_audio[
-                                       int((keyword_timing - 1) * sample_rate):int((keyword_timing + 3) * sample_rate)]
-                        sf.write(cut_name, keyword_frame, samplerate=self.SAMPLE_RATE)
-                        logger.info(f"saved detected frame, cut_name={cut_name}")
-                        keyword = False
-        except KeyboardInterrupt:
-            self.remove_temp_files()
-            logger.info(f"user cancelled process")
-        finally:
-            timer.join()
+                        timing += my_signal.shape[0] / sample_rate
+                        streamed_audio = np.concatenate([streamed_audio, my_signal])
+
+                        # get 1st second then start to predict
+                        while next_allowed_timing + 1 < timing:
+                            print(f"listned {next_allowed_timing + 1} seconds", end=": ")
+                            frame = streamed_audio[int((next_allowed_timing) * sample_rate):int((next_allowed_timing + 1) * sample_rate)]
+                            frame = self.convert_audio_to_tensor(frame)
+                            with torch.no_grad():
+                                prediction = self.model(frame)
+                                probs = F.softmax(prediction, dim=1)
+                                pred = torch.argmax(probs, dim=1).item()
+                            threshold = 0.5
+                            if pred > threshold:
+                                print(f"found on {keyword_timing} second; pred: {pred}")
+                                keyword = True
+                                keyword_timing = next_allowed_timing
+                            else:
+                                print(f"nothing found; pred: {pred}")
+
+                            # move window for hop_length to predict next frame
+                            next_allowed_timing += self.hop_length
+                        if keyword and (keyword_timing + 3 < timing):
+                            print(f"DETECTED!!!")
+                            logger.info(f"DETECTED ON {keyword_timing} second")
+                            with open(output_file, 'a') as f:
+                                f.write(f'{radio_url}:{int(next_allowed_timing + 1):.0f}\n')
+
+                            cut_name = os.path.join(OUTPUT_FOLDER_PATH, f'radio_{int(keyword_timing)}.wav')
+                            keyword_frame = streamed_audio[
+                                           int((keyword_timing - 1) * sample_rate):int((keyword_timing + 3) * sample_rate)]
+                            sf.write(cut_name, keyword_frame, samplerate=self.SAMPLE_RATE)
+                            logger.info(f"saved detected frame, cut_name={cut_name}")
+                            keyword = False
+            except KeyboardInterrupt:
+                self.remove_temp_files()
+                logger.info(f"user cancelled process")
+                os._exit(0)
+            except Exception as e:
+                logger.warn(e)
+                time.sleep(wait_time)
 
     def remove_temp_files(self):
         if os.path.exists(TEMP_AUDIO_FILE_PATH):
